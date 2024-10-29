@@ -1,0 +1,116 @@
+import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
+public class VelocityCSVDownloader {
+    private final String baseUrl;
+    private final String username;
+    private final String password;
+    private final String visualizationId;
+
+    public VelocityCSVDownloader(String baseUrl, String username, String password, String visualizationId) {
+        this.baseUrl = baseUrl;
+        this.username = username;
+        this.password = password;
+        this.visualizationId = visualizationId;
+    }
+
+    public void downloadVisualizationData() {
+        HttpURLConnection connection = null;
+        try {
+            // Construct the URL for CSV download
+            String downloadUrl = String.format("%s/api/visualizations/%s/download?format=csv", 
+                                            baseUrl, visualizationId);
+            
+            URL url = new URL(downloadUrl);
+            connection = (HttpURLConnection) url.openConnection();
+
+            // Setup the request
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("Accept", "text/csv");
+            
+            // Add Basic Authentication
+            String auth = username + ":" + password;
+            String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
+            connection.setRequestProperty("Authorization", "Basic " + encodedAuth);
+
+            // Handle the response
+            int responseCode = connection.getResponseCode();
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                // Generate filename with timestamp
+                String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+                String filename = String.format("visualization_%s_%s.csv", visualizationId, timestamp);
+                
+                // Download and save the file
+                saveToFile(connection.getInputStream(), filename);
+                System.out.println("Data successfully downloaded to: " + filename);
+            } else {
+                handleErrorResponse(connection);
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error downloading data: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private void saveToFile(InputStream inputStream, String filename) throws IOException {
+        File outputDir = new File("downloads");
+        if (!outputDir.exists()) {
+            outputDir.mkdirs();
+        }
+
+        File outputFile = new File(outputDir, filename);
+        
+        try (BufferedInputStream bis = new BufferedInputStream(inputStream);
+             BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(outputFile))) {
+            
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = bis.read(buffer)) != -1) {
+                bos.write(buffer, 0, bytesRead);
+            }
+            bos.flush();
+        }
+    }
+
+    private void handleErrorResponse(HttpURLConnection connection) throws IOException {
+        String errorMessage;
+        InputStream errorStream = connection.getErrorStream();
+        if (errorStream != null) {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(errorStream))) {
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+                errorMessage = response.toString();
+            }
+        } else {
+            errorMessage = "Unknown error occurred";
+        }
+        
+        throw new IOException(String.format("Failed to download data. Status code: %d. Error: %s",
+                connection.getResponseCode(), errorMessage));
+    }
+
+    public static void main(String[] args) {
+        // Example usage
+        String baseUrl = "https://your-velocity-portal-url";
+        String username = "your-username";
+        String password = "your-password";
+        String visualizationId = "your-visualization-id";
+
+        VelocityCSVDownloader downloader = new VelocityCSVDownloader(
+            baseUrl, username, password, visualizationId);
+        downloader.downloadVisualizationData();
+    }
+}
