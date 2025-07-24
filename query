@@ -5,3 +5,12 @@ SET jql = REGEXP_REPLACE(
     'fixVersion = ''RLS_5.1'''
 )
 WHERE jql LIKE '%fixVersion%';
+
+UPDATE your_table
+SET jql = REGEXP_REPLACE(
+    jql,
+    'fixVersion\s*=\s*\S+',
+    'fixVersion = RLS_5.2'
+)
+WHERE jql LIKE '%fixVersion =%';
+
